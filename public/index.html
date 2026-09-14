@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#11161b">
+<title>COEM Wiring Lab</title>
+<meta name="description" content="Control of Electrical Machines — a simulated wiring laboratory. Wire, check, operate and troubleshoot motor control circuits in 3D with IEC circuit diagrams.">
+<meta property="og:title" content="COEM Wiring Lab">
+<meta property="og:description" content="Simulated motor-control wiring laboratory for EEE and polytechnic students.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%9A%A1%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+<!-- ============================== LAB INDEX ============================== -->
+<section id="home" class="screen">
+  <div class="home-wrap">
+    <header class="home-head">
+      <div>
+        <p class="eyebrow">Control of Electrical Machines &middot; practical</p>
+        <h1>COEM Wiring Lab</h1>
+        <p class="lede">Ten control-wiring experiments, wired terminal by terminal on a simulated
+          panel. Every circuit is solved as a live netlist, so a starter only runs when the wiring
+          is genuinely right &mdash; and every experiment carries its IEC circuit diagram.</p>
+      </div>
+      <div class="home-side">
+        <span class="sim-badge">SIMULATION ONLY — NO LIVE VOLTAGE</span>
+        <div class="home-stats">
+          <div class="stat"><b id="homeDone">0</b><span>Completed</span></div>
+          <div class="stat"><b id="homeBest">0</b><span>Total score</span></div>
+        </div>
+      </div>
+    </header>
+    <div class="cycle-strip">
+      <span>The lab cycle</span>
+      <b>Identify</b><i>→</i><b>Connect</b><i>→</i><b>Check</b><i>→</i><b>Operate</b><i>→</i><b>Understand</b>
+    </div>
+    <ul class="lab-list" id="labList"></ul>
+    <footer class="home-foot">
+      <p>Built for EEE and polytechnic students. The &ldquo;415 V&rdquo; source is a node in software:
+        nothing on this bench is energised and nothing here is an instruction for working on real equipment.</p>
+    </footer>
+  </div>
+</section>
+
+<!-- ============================== SIMULATOR ============================== -->
+<section id="sim" class="screen" hidden>
+  <canvas id="stage"></canvas>
+
+  <div id="hud">
+    <header class="topbar panel">
+      <button class="btn ghost" id="btnHome" title="Back to the lab index">&larr; Lab index</button>
+      <div class="brand">
+        <h2 id="expTitle">Experiment</h2>
+        <p id="expCode">—</p>
+      </div>
+      <span class="sim-badge">SIMULATION ONLY</span>
+      <div class="scoreboard">
+        <div class="stat"><b id="hudScore">1000</b><span>Score</span></div>
+        <div class="stat"><b id="hudTime">0:00</b><span>Time</span></div>
+        <div class="stat"><b id="hudErr">0</b><span>Errors</span></div>
+      </div>
+    </header>
+
+    <div class="railtabs">
+      <button class="btn" data-rail="left">Task</button>
+      <button class="btn" data-rail="right">Panel</button>
+    </div>
+
+    <div class="mid">
+      <aside class="rail rail-left panel" id="railLeft">
+        <section class="card objective">
+          <h3 id="objTitle">Objective</h3>
+          <div class="body"><p id="objText"></p></div>
+        </section>
+        <section class="card">
+          <h3>Wiring schedule</h3>
+          <div class="body"><ul class="check" id="checklist"></ul></div>
+        </section>
+        <section class="card">
+          <h3>Terminal finder</h3>
+          <div class="body">
+            <input id="findQ" type="search" placeholder="A1, 95, START, KM1…" autocomplete="off">
+            <div class="chips" id="compChips"></div>
+            <ul class="finder" id="findList"></ul>
+          </div>
+        </section>
+        <section class="card">
+          <h3>Wire colour code (IEC)</h3>
+          <div class="body legend">
+            <div><i style="background:#8a5a34"></i>L1 — brown</div>
+            <div><i style="background:#15181b"></i>L2 — black</div>
+            <div><i style="background:#8d949b"></i>L3 — grey</div>
+            <div><i style="background:#3f8fd0"></i>Neutral — blue</div>
+            <div><i style="background:#cf3b34"></i>Control — red</div>
+            <div><i style="background:#ff3ea5"></i>Flagged — remove it</div>
+          </div>
+        </section>
+      </aside>
+
+      <aside class="rail rail-right panel" id="railRight">
+        <section class="card">
+          <h3>Panel status</h3>
+          <div class="body" id="statusBody"></div>
+        </section>
+        <section class="card">
+          <h3>How to wire</h3>
+          <div class="body">
+            <p><strong>Drag</strong> from one terminal to another, or tap one then the other.
+               <strong>Tap a wire twice</strong> to remove it.</p>
+            <p>Drag empty space to orbit, scroll or pinch to zoom. Use the terminal finder to fly
+               straight to a marking you cannot see.</p>
+          </div>
+        </section>
+      </aside>
+    </div>
+
+    <div class="dock panel">
+      <button class="btn primary" id="btnCheck">Wire Check</button>
+      <button class="btn" id="btnDiagram">Circuit Diagram</button>
+      <button class="btn" id="btnHint">Hint <small>&minus;25</small></button>
+      <button class="btn" id="btnLabels">Labels: Normal</button>
+      <button class="btn" id="btnClear">Clear Wiring</button>
+      <button class="btn" id="btnLearn">Learn First</button>
+      <span class="dock-sep"></span>
+      <span id="opControls" class="op-controls"></span>
+    </div>
+  </div>
+</section>
+
+<div id="toast"></div>
+
+<div class="scrim" id="scrim">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+    <header>
+      <div class="eyebrow" id="sheetEyebrow">Learn first</div>
+      <h3 id="sheetTitle">Experiment</h3>
+    </header>
+    <div class="content" id="sheetBody"></div>
+    <footer id="sheetFoot"></footer>
+  </div>
+</div>
+
+<div class="drawer" id="drawer" hidden>
+  <header>
+    <div>
+      <div class="eyebrow">IEC circuit diagram</div>
+      <h3 id="drawerTitle">Experiment</h3>
+    </div>
+    <button class="btn" id="drawerClose">Close</button>
+  </header>
+  <div class="drawer-body" id="drawerBody"></div>
+</div>
+
+<script src="js/three.min.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/parts.js"></script>
+<script src="js/diagram.js"></script>
+<script src="js/experiments.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
