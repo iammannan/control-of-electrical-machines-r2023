@@ -13,23 +13,27 @@ to GitHub Pages from the same repo without any changes.
 
 ## What is in it
 
-| # | Experiment | State |
-|---|------------|-------|
-| 01 | DOL starter with overload relay | Playable |
-| 02 | Conveyor motor, metal detection, 5 s stop (proximity switch + timer) | Playable |
-| 03 | Single-phasing preventer | Playable |
-| 04 | Semi-automatic star–delta starter | In development |
-| 05 | Automatic star–delta starter | In development |
-| 06 | Forward and reverse operation | In development |
-| 07 | Jogging control | In development |
-| 08 | Dynamic braking | In development |
-| 09 | Automatic rotor resistance starter | In development |
-| 10 | Control panel fault finding | In development |
+| # | Experiment | Wires | Notes |
+|---|------------|-------|-------|
+| 01 | DOL starter with overload relay | 19 | Hold-in contact, overload trip |
+| 02 | Conveyor, metal detection, 5 s stop | 29 | Proximity switch + on-delay timer |
+| 03 | Single-phasing preventer | 24 | Phase-failure relay, injectable phase loss |
+| 04 | Semi-automatic star–delta starter | 41 | Changeover button, mutual interlock |
+| 05 | Automatic star–delta starter | 41 | One timer does the changeover |
+| 06 | Forward and reverse operation | 32 | Two lines crossed, electrical interlock |
+| 07 | Jogging in a cage induction motor | 24 | Run relay + jog button |
+| 08 | Dynamic braking of a cage motor | 39 | D.C. injection, timed |
+| 09 | Automatic rotor resistance starter | 44 | Slip-ring motor, two timed steps |
+| 10 | Control panel fault finding | — | Three randomised faults to find |
 
-Each playable experiment has: a Learn First briefing, a full 3D panel, a
-terminal finder, a wiring schedule that ticks off as you work, a continuity
-report, operating controls, a fault to inject, an IEC circuit diagram and a
-scored result.
+All ten are playable. Each experiment has: a Learn First briefing, a full 3D panel, a terminal
+finder, a wiring schedule that ticks off as you work, a continuity report,
+operating controls, a fault to inject, an IEC circuit diagram and a scored
+result.
+
+The heavier experiments carry a **Pre-wire power** button that runs the
+power-circuit wires for the student at a cost of 100 marks, so a beginner can
+spend the session on the control logic instead of on 23 power connections.
 
 ---
 
@@ -44,7 +48,14 @@ fails to work rather than being caught by a rule.
 
 That also means the engine reports genuine faults: a line-to-neutral short, a
 phase-to-phase short, or a relay whose own contact breaks its own coil
-(chatter).
+(chatter). Close the star and delta contactors together, or both direction
+contactors in Experiment 6, and it reports the phase-to-phase short those
+interlocks exist to prevent.
+
+Speed is modelled per experiment where it carries a lesson: star runs up to
+about 1150 rpm and delta to 1440; the rotor-resistance starter climbs in three
+stages; d.c. injection decays the speed roughly eight times faster than
+coasting.
 
 ---
 

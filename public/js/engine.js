@@ -594,10 +594,13 @@ function updateTerminalRings(now){
     else w.mesh.material.emissive.setRGB(0,0,0);
   }
 }
+const clsGroup = c => c==='neutral' ? 'n' : (c==='power'||c==='dc') ? 'p' : 'c';
 function compatible(a,b){
-  if(a.comp===b.comp) return false;
+  /* same device: only the strapping links on a star point or a shorting
+     contactor are legitimate, and those are always power terminals */
+  if(a.comp===b.comp) return clsGroup(a.cls)==='p' && clsGroup(b.cls)==='p';
   if(a.cls==='neutral'||b.cls==='neutral') return true;
-  return a.cls===b.cls;
+  return clsGroup(a.cls)===clsGroup(b.cls);
 }
 
 function render(){ renderer.render(scene, camera); }

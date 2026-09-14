@@ -17,9 +17,19 @@ const save = ()=>{ try{ localStorage.setItem(KEY, JSON.stringify(progress)); }ca
 /* ---------- run state ---------------------------------------------------- */
 const R = {
   spec:null, errors:0, hints:0, correct:0, t0:0, finished:false,
-  motorRpm:0, cycleDone:false, sppProven:false,
-  ran:false, sawStop:false, phaseWasOpen:false, running:false
+  motorRpm:0, motorMode:'', cycleDone:false, sppProven:false,
+  ran:false, sawStop:false, phaseWasOpen:false, running:false,
+  deltaRun:false, fwdRun:false, revRun:false,
+  latched:false, jogged:false, jogPressed:false,
+  ranFast:false, brakeSeen:false, braked:false, step2Run:false,
+  assists:0
 };
+function resetRun(){
+  Object.assign(R, {errors:0, hints:0, correct:0, finished:false, motorRpm:0, motorMode:'',
+    cycleDone:false, sppProven:false, ran:false, sawStop:false, phaseWasOpen:false, running:false,
+    deltaRun:false, fwdRun:false, revRun:false, latched:false, jogged:false, jogPressed:false,
+    ranFast:false, brakeSeen:false, braked:false, step2Run:false, assists:0});
+}
 let expectedMap = new Map();
 
 /* ---------- small ui helpers -------------------------------------------- */
@@ -92,10 +102,7 @@ let lastT = performance.now(), hudClock = 0;
 
 function startExperiment(spec){
   $('#home').hidden = true; $('#sim').hidden = false;
-  R.spec = spec; R.errors = 0; R.hints = 0; R.correct = 0; R.finished = false;
-  R.motorRpm = 0; R.cycleDone = false; R.sppProven = false;
-  R.ran = false; R.sawStop = false; R.phaseWasOpen = false; R.running = false;
-  R.t0 = Date.now();
+  R.spec = spec; resetRun(); R.t0 = Date.now();
   expectedMap = new Map(spec.expected.map(e=>[ENG.pairKey(e.a,e.b), e]));
   ENG.load(spec);
   ENG.setLabelMode(ENG.sim.labelMode);
@@ -105,6 +112,7 @@ function startExperiment(spec){
   $('#objText').textContent = spec.aim;
   buildDock(spec);
   buildFinder();
+  if(spec.faultFinding) injectFaults();
   resize();
   refresh();
   showLearn();
@@ -178,6 +186,9 @@ function buildDock(spec){
   });
 }
 function doAction(ct){
+  if(ct.id==='prewire'){ preWire(); return; }
+  if(ct.id==='refault'){ ENG.clearWires(); injectFaults(); resetRun(); R.t0=Date.now();
+                         toast('New fault set loaded. Three things are wrong.'); refresh(); return; }
   if(ct.id==='ol'){ simulateOverload(); return; }
   if(ct.id==='reset'){ resetRelay('F2'); return; }
   if(ct.id==='ph2'){
@@ -190,6 +201,45 @@ function doAction(ct){
     refresh();
   }
 }
+/* fills in the heavy power-circuit groups so a beginner can concentrate on
+   the control logic — costs 100 marks and says so */
+function preWire(){
+  const groups = R.spec.prewire || ['power','motor'];
+  let n = 0;
+  R.spec.expected.forEach(e=>{
+    if(groups.indexOf(e.g) < 0) return;
+    if(ENG.hasWire(e.a,e.b)) return;
+    ENG.addWire(e.a,e.b,true); R.correct++; n++;
+  });
+  if(!n){ toast('The power circuit is already complete.'); return; }
+  R.assists++;
+  toast(n+' power-circuit wires run for you — 100 marks. The control circuit is yours.');
+  refresh();
+}
+
+/* ---- experiment 10: build a panel that is wired, but wrong ---- */
+const DECOYS = [
+  {drop:['S2.14','KM1.A1'],  add:['S2.14','KM1.A2']},
+  {drop:['KM1.13','S2.13'],  add:['KM1.13','S2.14']},
+  {drop:['F2.96','S1.11'],   add:['F2.96','S1.12']}
+];
+function injectFaults(){
+  const exp = R.spec.expected;
+  exp.forEach(e=>ENG.addWire(e.a,e.b,true));
+  const decoy = DECOYS[Math.floor(Math.random()*DECOYS.length)];
+  const dw = ENG.sim.wires.find(w=>ENG.pairKey(w.a,w.b)===ENG.pairKey(decoy.drop[0],decoy.drop[1]));
+  if(dw) ENG.removeWire(dw);
+  ENG.addWire(decoy.add[0], decoy.add[1], true);      // looks like any other wire
+  const pool = exp.filter(e=>['control','coil','overload','motor'].indexOf(e.g)>=0 &&
+                             ENG.pairKey(e.a,e.b)!==ENG.pairKey(decoy.drop[0],decoy.drop[1]));
+  for(let i=0;i<2 && pool.length;i++){
+    const pick = pool.splice(Math.floor(Math.random()*pool.length),1)[0];
+    const w = ENG.sim.wires.find(x=>ENG.pairKey(x.a,x.b)===ENG.pairKey(pick.a,pick.b));
+    if(w) ENG.removeWire(w);
+  }
+  R.correct = ENG.sim.wires.length;
+}
+
 function simulateOverload(){
   const f = ENG.sim.comps['F2']; if(!f) return;
   if(!R.running){ toast('Start the motor first — the relay only trips on running load.'); return; }
@@ -251,14 +301,17 @@ $('#findQ').addEventListener('input', e=>renderFinder(e.target.value));
 const elapsed = ()=> Math.floor((Date.now()-R.t0)/1000);
 function currentScore(){
   const over = Math.max(0, elapsed() - (R.spec?R.spec.par:300));
-  return Math.max(0, Math.min(1000, 1000 - R.errors*40 - R.hints*25 - Math.min(150, Math.floor(over/4))));
+  return Math.max(0, Math.min(1000, 1000 - R.errors*40 - R.hints*25 - R.assists*100 - Math.min(150, Math.floor(over/4))));
 }
 const fmtTime = t => Math.floor(t/60)+':'+String(t%60).padStart(2,'0');
 
 /* ============================================================ CHECK / HINT */
 const groupPairs = g => R.spec.expected.filter(e=>e.g===g).map(e=>[e.a,e.b]);
 function allWired(){
-  return R.spec.expected.every(e=>ENG.hasWire(e.a,e.b)) && !ENG.sim.wires.some(w=>!w.ok);
+  if(!R.spec.expected.every(e=>ENG.hasWire(e.a,e.b))) return false;
+  if(ENG.sim.wires.some(w=>!w.ok)) return false;
+  if(R.spec.faultFinding) return ENG.sim.wires.length === R.spec.expected.length;
+  return true;
 }
 function wireCheck(){
   let rows = '', ok = true;
@@ -275,6 +328,15 @@ function wireCheck(){
     ok = false;
     extra += '<div class="note bad"><strong>'+bad.length+' flagged wire'+(bad.length>1?'s':'')+'</strong> (magenta on the panel): '+
              bad.map(w=>tName(w.a)+' → '+tName(w.b)).join('; ')+'. Tap a flagged wire twice to remove it.</div>';
+  }else if(R.spec.faultFinding){
+    const spare = ENG.sim.wires.length - R.spec.expected.filter(e=>ENG.hasWire(e.a,e.b)).length;
+    const missing = R.spec.expected.filter(e=>!ENG.hasWire(e.a,e.b)).length;
+    if(missing || spare){
+      ok = false;
+      extra += '<div class="note">'+(missing? missing+' connection'+(missing>1?'s are':' is')+' missing. ':'')+
+               (spare? spare+' wire'+(spare>1?'s are':' is')+' on a terminal the drawing does not use. ':'')+
+               'Trace it out against the circuit diagram — this report will not name them.</div>';
+    }
   }else{
     const missing = R.spec.expected.filter(e=>!ENG.hasWire(e.a,e.b));
     if(missing.length) extra += '<div class="note">Still missing: <strong>'+tName(missing[0].a)+' → '+tName(missing[0].b)+'</strong>'+
@@ -291,6 +353,16 @@ function wireCheck(){
 }
 function giveHint(){
   const missing = R.spec.expected.find(e=>!ENG.hasWire(e.a,e.b));
+  if(R.spec.faultFinding){
+    R.hints++;
+    const bad = R.spec.groups.find(g=>{
+      const pr = groupPairs(g.k);
+      return pr.some(p=>!ENG.hasWire(p[0],p[1]));
+    });
+    toast(bad ? 'Something is wrong in: '+bad.label+'. Trace that branch against the diagram.'
+              : 'Every branch is complete — look for a wire on a terminal the drawing does not use.');
+    refresh(); return;
+  }
   if(!missing){ toast('Every required wire is in place. Run a Wire Check.'); return; }
   R.hints++;
   ENG.focusTerminal(missing.a, {dist:1.15});
@@ -364,8 +436,10 @@ function statusRows(){
     else if(c.def===P.spp) row('Preventer', pill(c.st.healthy===false?'Phase fault':'Healthy', c.st.healthy===false?'bad':'on'));
     else if(c.def===P.proximity) row('Proximity S3', pill(c.st.present?'Metal detected':'Clear', c.st.present?'warn':''));
     else if(c.def===P.mcb3) row(tag+' MCB', pill(c.st.on?'Closed':'Open', c.st.on?'on':'bad'));
+    else if(c.def===P.dcUnit) row('D.C. unit', pill(c.st.dcOn?'Live':'Off', c.st.dcOn?'on':''));
     else if(c.def===P.motor3){
       row('Motor', pill(c.st.rpm>40?(c.st.dir<0?'Running rev':'Running'):'Stopped', c.st.rpm>40?'on':''));
+      if(R.motorMode) row('Mode', '<span class="v" style="font-size:11px">'+R.motorMode+'</span>');
       row('Speed', '<span class="v">'+Math.round(c.st.rpm)+' rpm</span>');
       h += '<div class="gauge"><i style="width:'+(c.st.rpm/1440*100).toFixed(0)+'%"></i></div>';
     }
@@ -433,19 +507,32 @@ function step(dt){
     if(c.st.energised) c.st.elapsed += dt; else c.st.elapsed = 0;
   });
 
-  /* motors */
-  let anyRunning = false, rpm = 0;
+  /* the d.c. injection unit is live whenever its a.c. side is fed */
+  if(S.comps.T1) S.comps.T1.st.dcOn =
+    uf.same('T1.L', R.spec.rails.live) && uf.same('T1.N', R.spec.rails.neutral);
+
+  /* motors — an experiment may supply its own speed model */
+  let anyRunning = false, rpm = 0, mode = '';
   S.compList.forEach(c=>{
     if(c.def!==P.motor3) return;
-    const dir = ENG.motorDirection(c.id);
-    const target = dir ? 1440 : 0;
-    if(dir) c.st.dir = dir;
-    c.st.rpm += (target - c.st.rpm) * Math.min(1, dt*(dir?1.05:0.7));
-    if(c.st.rpm < 3 && !dir) c.st.rpm = 0;
+    let target, rate;
+    if(R.spec.motor){
+      const m = R.spec.motor(uf, S.comps);
+      target = m.target; rate = m.rate || 1.0; mode = m.mode || '';
+      if(target > 0) c.st.dir = 1;
+    }else{
+      const dir = ENG.motorDirection(c.id);
+      if(dir) c.st.dir = dir;
+      target = dir ? 1440 : 0;
+      rate = dir ? 1.05 : 0.7;
+      mode = dir ? (dir<0 ? 'Running reverse' : 'Running forward') : 'Stopped';
+    }
+    c.st.rpm += (target - c.st.rpm) * Math.min(1, dt*rate);
+    if(c.st.rpm < 3 && target===0) c.st.rpm = 0;
     if(c.st.rpm > 40) anyRunning = true;
     rpm = Math.max(rpm, c.st.rpm);
   });
-  R.motorRpm = rpm; R.running = anyRunning;
+  R.motorRpm = rpm; R.running = anyRunning; R.motorMode = mode;
 
   /* conveyor follows its drive motor */
   if(cv){
@@ -454,6 +541,23 @@ function step(dt){
   }
 
   /* experiment-specific completion tracking */
+  const C = S.comps, id = R.spec.id;
+  if(id===4 || id===5){ if(/DELTA/.test(mode) && rpm > 1300) R.deltaRun = true; }
+  if(id===6 && C.M1){
+    if(rpm > 1200 && C.M1.st.dir > 0) R.fwdRun = true;
+    if(rpm > 1200 && C.M1.st.dir < 0) R.revRun = true;
+  }
+  if(id===7 && C.KM1 && C.S2 && C.S3){
+    if(C.KM1.st.energised && !C.S2.st.pressed && !C.S3.st.pressed && rpm > 600) R.latched = true;
+    if(C.S3.st.pressed && rpm > 150) R.jogPressed = true;
+    if(R.jogPressed && !C.S3.st.pressed && !C.KM1.st.energised) R.jogged = true;
+  }
+  if(id===8){
+    if(rpm > 1200) R.ranFast = true;
+    if(R.ranFast && /braking/i.test(mode)) R.brakeSeen = true;
+    if(R.brakeSeen && rpm < 80) R.braked = true;
+  }
+  if(id===9){ if(/Step 2/.test(mode) && rpm > 1350) R.step2Run = true; }
   if(R.spec.id===2){
     if(rpm>900) { if(R.sawStop) R.cycleDone = true; R.ran = true; }
     if(R.ran && rpm<150 && px && px.st.present) R.sawStop = true;

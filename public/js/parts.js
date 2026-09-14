@@ -272,16 +272,27 @@ const pushbutton = {
     legend.position.set(0,-0.078,0.101); g.add(legend);
     const tag = makeLabel((inst.tag||inst.id)+' '+(nc?'NC':'NO'),{h:0.024,color:'#9aa5ad',mono:true});
     tag.position.set(0,0.078,0.101); g.add(tag);
-    const a = nc?'11':'13', b = nc?'12':'14';
-    addTerminal(g, inst.id, a, -0.066,-0.112, 0.04,
-      {cls:'control', labelPos:'left', compLabel:inst.legend||inst.id, desc:(nc?'NC':'NO')+' contact'});
-    addTerminal(g, inst.id, b,  0.066,-0.112, 0.04,
-      {cls:'control', labelPos:'right', compLabel:inst.legend||inst.id, desc:(nc?'NC':'NO')+' contact'});
+    const both = inst.k === 'NONC';
+    if(both){
+      [['11',-0.10,'NC, opens when pressed'],['12',-0.035,'NC, opens when pressed'],
+       ['13', 0.035,'NO, closes when pressed'],['14', 0.10,'NO, closes when pressed']]
+        .forEach(t=>addTerminal(g, inst.id, t[0], t[1], -0.118, 0.04,
+          {cls:'control', labelPos:'below', compLabel:inst.legend||inst.id, desc:t[2]}));
+      g.add(at(makeLabel('NC',{h:0.018,color:'#e08585',mono:true}), -0.068,-0.075,0.101));
+      g.add(at(makeLabel('NO',{h:0.018,color:'#e09a63',mono:true}),  0.068,-0.075,0.101));
+    }else{
+      const a = nc?'11':'13', b = nc?'12':'14';
+      addTerminal(g, inst.id, a, -0.066,-0.112, 0.04,
+        {cls:'control', labelPos:'left', compLabel:inst.legend||inst.id, desc:(nc?'NC':'NO')+' contact'});
+      addTerminal(g, inst.id, b,  0.066,-0.112, 0.04,
+        {cls:'control', labelPos:'right', compLabel:inst.legend||inst.id, desc:(nc?'NC':'NO')+' contact'});
+    }
     return {group:g, cap:capM, rest:0.128};
   },
   links(c){
-    const nc = c.inst.k==='NC';
-    if(nc) return c.st.pressed ? [] : [['11','12']];
+    const k = c.inst.k;
+    if(k==='NONC') return c.st.pressed ? [['13','14']] : [['11','12']];
+    if(k==='NC')   return c.st.pressed ? [] : [['11','12']];
     return c.st.pressed ? [['13','14']] : [];
   },
   anim(c){ c.parts.cap.position.z = c.st.pressed ? c.parts.rest-0.014 : c.parts.rest; }
@@ -503,11 +514,20 @@ const motor3 = {
       const s = box(0.024,0.018,0.055,M.plasticBlk);
       s.position.set(L/2+0.20, Math.sin(a)*0.05, Math.cos(a)*0.05); s.rotation.x=-a; rotor.add(s);
     }
-    const tb = shade(box(0.19,0.09,0.16,M.plasticBlk)); tb.position.set(0,R+0.04,0); g.add(tb);
-    const lid = shade(box(0.195,0.012,0.165,M.plasticDk)); lid.position.set(0,R+0.09,0); g.add(lid);
-    (inst.terminals||['U','V','W']).forEach((p,i,arr)=>{
-      addTerminal(g, inst.id, p, -0.05+i*0.05, R+0.045, 0.085,
-        {cls:'power', labelPos:'above', compLabel:inst.tag||'M1', desc:'Stator winding '+p});
+    const rows = inst.rows || [inst.terminals || ['U','V','W']];
+    const wide = Math.max(...rows.map(r=>r.length));
+    const bw = Math.max(0.20, wide*0.062 + 0.07);
+    const bh = rows.length>1 ? 0.17 : 0.09;
+    const by = R + (rows.length>1 ? 0.078 : 0.04);
+    const tb = shade(box(bw,bh,0.16,M.plasticBlk)); tb.position.set(0,by,0); g.add(tb);
+    const lid = shade(box(bw+0.006,0.012,0.165,M.plasticDk)); lid.position.set(0,by+bh/2+0.006,0); g.add(lid);
+    rows.forEach((row,ri)=>{
+      const ry = rows.length>1 ? (by + (ri===0 ? 0.048 : -0.048)) : R+0.045;
+      row.forEach((nm,i)=>{
+        addTerminal(g, inst.id, nm, (i-(row.length-1)/2)*0.062, ry, 0.085,
+          {cls:'power', labelPos: ri===0?'above':'below', compLabel:inst.tag||'M1',
+           desc:(inst.rotorTerms&&inst.rotorTerms.includes(nm)) ? 'Rotor slip-ring '+nm : 'Stator winding '+nm});
+      });
     });
     for(const sx of [-0.12,0.12]){ const f = shade(box(0.07,0.05,0.26,M.motorFin)); f.position.set(sx,-R-0.01,0); g.add(f); }
     const base = shade(box(0.52,0.05,0.34,M.benchEdge)); base.position.set(0,-R-0.055,0); g.add(base);
@@ -580,5 +600,75 @@ const conveyor = {
   }
 };
 
-return {supply3, mcb3, contactor3p, olr, pushbutton, relay, timer, proximity, spp, motor3, conveyor};
+/* ------------------------------------------- ROTOR RESISTANCE BANK */
+const resistorBank = {
+  coil:null,
+  build(inst, c){
+    const {M, box, cyl, shade, addTerminal, makeLabel} = c;
+    const g = new T.Group(); g.position.set(inst.x, inst.y, inst.z||0);
+    const W=0.50,H=0.30,D=0.17,FZ=D+0.002;
+    const frame = shade(box(W,0.016,D,M.steel)); frame.position.set(0,H/2,D/2); g.add(frame);
+    const frame2 = shade(box(W,0.016,D,M.steel)); frame2.position.set(0,-H/2,D/2); g.add(frame2);
+    for(let i=0;i<3;i++){
+      const x = -0.15+i*0.15;
+      for(let s=0;s<2;s++){
+        const yc = s? -0.07 : 0.07;
+        const el = cyl(0.030,0.030,0.11,M.resistor,16);
+        el.position.set(x,yc,D*0.55); shade(el); g.add(el);
+        for(let k=0;k<7;k++){
+          const co = cyl(0.034,0.034,0.006,new T.MeshStandardMaterial({color:0x8e8375,roughness:0.9}),14);
+          co.position.set(x,yc-0.05+k*0.0165,D*0.55); g.add(co);
+        }
+      }
+      const link = box(0.012,0.03,0.012,M.steel); link.position.set(x,0,D*0.55); g.add(link);
+    }
+    g.add(at(makeLabel((inst.tag||'R1')+'  ROTOR RESISTANCE BANK',{h:0.024,color:'#dfe4e8',mono:true}),0,H/2+0.036,D*0.55));
+    g.add(at(makeLabel('two steps · star connected',{h:0.018,color:'#9aa5ad',mono:true}),0,-H/2-0.088,D*0.55));
+    ['1','3','5'].forEach((t,i)=>addTerminal(g, inst.id, t, -0.15+i*0.15, H/2+0.052, D*0.55,
+      {cls:'power', labelPos:'above', compLabel:inst.tag||'R1', desc:'Full resistance in, phase '+(i+1)}));
+    ['2','4','6'].forEach((t,i)=>addTerminal(g, inst.id, t, -0.15+i*0.15, -H/2-0.052, D*0.55,
+      {cls:'power', labelPos:'below', compLabel:inst.tag||'R1', desc:'Mid tap, phase '+(i+1)}));
+    return {group:g};
+  },
+  /* each phase conducts through its two sections down to the bank star point */
+  links(){ return [['1','2'],['3','4'],['5','6'],['2','S'],['4','S'],['6','S']]; }
+};
+
+/* ----------------------------------------------- DC INJECTION UNIT */
+const dcUnit = {
+  coil:null,
+  build(inst, c){
+    const {M, box, cyl, shade, addTerminal, makeLabel, ledMat} = c;
+    const g = new T.Group(); g.position.set(inst.x, inst.y, 0);
+    const W=0.32,H=0.28,D=0.17,FZ=D+0.002;
+    const body = shade(box(W,H,D,M.plasticBlk)); body.position.z=D/2; g.add(body);
+    const fins = shade(box(W*0.9,0.02,D*0.9,M.steel)); fins.position.set(0,0.02,D*0.5); g.add(fins);
+    for(let i=0;i<5;i++){
+      const f = shade(box(W*0.86,0.006,D*0.86,M.steel)); f.position.set(0,-0.02+i*0.012,D*0.5); g.add(f);
+    }
+    g.add(at(makeLabel((inst.tag||'T1')+'  DC INJECTION UNIT',{h:0.021,color:'#e2e7ea',mono:true}),0,H/2-0.028,FZ));
+    g.add(at(makeLabel('bridge rectifier · simulated 60 V d.c.',{h:0.016,color:'#8f9aa2',mono:true}),0,H/2-0.054,FZ));
+    const m = ledMat(0x2b3036);
+    const l = cyl(0.016,0.016,0.01,m,18); l.rotation.x=Math.PI/2; l.position.set(0,-0.03,FZ+0.01); g.add(l);
+    g.add(at(makeLabel('DC ON',{h:0.016,color:'#9aa5ad',mono:true}),0,-0.062,FZ+0.01));
+    addTerminal(g, inst.id, 'L', -0.09, H/2+0.052, D*0.62,
+      {cls:'power', labelPos:'above', compLabel:inst.tag||'T1', desc:'a.c. supply in, line'});
+    addTerminal(g, inst.id, 'N',  0.09, H/2+0.052, D*0.62,
+      {cls:'neutral', labelPos:'above', compLabel:inst.tag||'T1', desc:'a.c. supply in, neutral'});
+    addTerminal(g, inst.id, '+', -0.09, -H/2-0.052, D*0.62,
+      {cls:'dc', labelPos:'below', compLabel:inst.tag||'T1', lc:'#8fc0e8', desc:'d.c. output, positive'});
+    addTerminal(g, inst.id, '-',  0.09, -H/2-0.052, D*0.62,
+      {cls:'dc', labelPos:'below', compLabel:inst.tag||'T1', lc:'#8fc0e8', desc:'d.c. output, negative'});
+    return {group:g, lamp:m};
+  },
+  links(){ return []; },
+  anim(c){
+    const on = c.st.dcOn?1:0;
+    c.parts.lamp.color.setHex(on?0x4aa3d8:0x2b3036);
+    c.parts.lamp.emissive.setRGB(0,0.35*on,0.6*on);
+  }
+};
+
+return {supply3, mcb3, contactor3p, olr, pushbutton, relay, timer, proximity, spp,
+        motor3, conveyor, resistorBank, dcUnit};
 })();
