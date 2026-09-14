@@ -1,6 +1,3 @@
-# Publishes public/ to GitHub Pages on every push to main.
-# The site keeps living in public/, so the same repo still deploys to Firebase
-# Hosting with `firebase deploy --only hosting`.
 name: Deploy to GitHub Pages
 
 on:
